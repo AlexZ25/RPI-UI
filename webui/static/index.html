@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DeepRacer Control</title>
+<link rel="stylesheet" href="/static/style.css">
+<link rel="icon" href="data:,">
+</head>
+<body>
+<header>
+  <strong class="brand">DeepRacer</strong>
+  <span class="chips">
+    <span class="chip" id="chip-link" title="Browser ↔ Pi connection">Link</span>
+    <span class="chip" id="chip-mqtt" title="MQTT broker">MQTT</span>
+    <span class="chip" id="chip-pwm" title="pwm_subscriber heartbeat">PWM</span>
+    <span class="chip" id="chip-cam" title="Camera">Camera</span>
+  </span>
+  <span class="mode" id="mode">IDLE</span>
+  <button id="estop" class="estop" title="Emergency stop (Space)">STOP</button>
+</header>
+
+<div id="banners">
+  <div class="banner danger hidden" id="b-estop">E-STOP is active. All driving is blocked. <button id="b-estop-reset">Reset E-stop</button></div>
+  <div class="banner warn hidden" id="b-pwm">pwm_subscriber is not running, so commands will not reach the motors. <button data-goto="system">Open System</button></div>
+  <div class="banner warn hidden" id="b-foreign">Another program is also publishing to <code>car/cmd</code>. Stop it: two controllers will fight each other.</div>
+  <div class="banner warn hidden" id="b-link">Connection to the car lost. Reconnecting…</div>
+</div>
+<div id="toast" class="toast hidden"></div>
+
+<nav id="tabs">
+  <button data-tab="drive" class="active">Drive</button>
+  <button data-tab="auto">Autopilot</button>
+  <button data-tab="tune">Tuning</button>
+  <button data-tab="calib">Calibrate</button>
+  <button data-tab="logs">Logs</button>
+  <button data-tab="system">System</button>
+</nav>
+
+<main>
+<!-- ============================== DRIVE ============================== -->
+<section id="tab-drive" class="tab">
+  <div class="cols">
+    <div class="col-wide">
+      <div class="viewer" data-default="raw"></div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <button id="take" class="primary big">Take control</button>
+        <p class="hint" id="take-hint">Take control to drive. Release, close the tab, or lose connection and the car stops.</p>
+        <div id="pad" class="pad"><div id="knob" class="knob"></div></div>
+        <p class="hint">Drag the pad, use <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows, or a gamepad (RT throttle, LT reverse, stick steers, B = stop). <kbd>Space</kbd> = E-stop. <span id="gp-name"></span></p>
+      </div>
+      <div class="card">
+        <table class="kv">
+          <tr><th>Input</th><td>steer <b id="in-steer">0.00</b> · throttle <b id="in-thr">0.00</b></td></tr>
+          <tr><th>Sent</th><td id="sent">–</td></tr>
+          <tr><th>PWM duty</th><td id="duty">–</td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <label class="row">Max throttle <input type="range" min="0" max="1" step="0.05" data-path="manual.max_throttle"><output></output></label>
+        <label class="row">Max reverse <input type="range" min="0" max="1" step="0.05" data-path="manual.max_reverse"><output></output></label>
+        <label class="row">Steering limit <input type="range" min="0.1" max="1" step="0.05" data-path="manual.steer_limit"><output></output></label>
+        <label class="check"><input type="checkbox" data-path="manual.invert_steer"><span>Invert steering (on: right = negative <code>steer</code>, like joy_test.py)</span></label>
+        <button class="rec" data-rec>● Record</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== AUTOPILOT ============================== -->
+<section id="tab-auto" class="tab hidden">
+  <div class="cols">
+    <div class="col-wide">
+      <div class="viewer" data-default="lane"></div>
+      <div class="viewer small" data-default="raw"></div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <label class="row">Preset
+          <select id="preset"></select>
+          <button id="preset-load">Load</button>
+        </label>
+        <p class="hint" id="preset-hint"></p>
+        <label class="row">Throttle <input type="range" min="0" max="1" step="0.05" data-path="pipeline.throttle"><output></output></label>
+        <label class="row">Lane type
+          <select data-path="pipeline.lane"><option value="single">Single red lane</option><option value="two">Two lanes (yellow + white)</option></select>
+        </label>
+        <label class="check"><input type="checkbox" data-path="pipeline.distance.enabled"> Distance keeping (ArUco)</label>
+        <label class="check"><input type="checkbox" data-path="pipeline.light.enabled"> Stop at traffic light</label>
+        <div class="btns">
+          <button id="auto-start" class="go big">Start autopilot</button>
+          <button id="auto-stop" class="big">Stop</button>
+        </div>
+        <p class="hint">Vision runs as a dry-run preview while this tab is open, and nothing is sent to the car until you press Start.</p>
+      </div>
+      <div class="card">
+        <table class="kv" id="vis">
+          <tr><th>Lane</th><td id="v-lane">–</td></tr>
+          <tr><th>Offset / yaw</th><td id="v-geo">–</td></tr>
+          <tr><th>Curvature</th><td id="v-curv">–</td></tr>
+          <tr><th>Nearest marker</th><td id="v-dist">–</td></tr>
+          <tr><th>Traffic light</th><td id="v-light">–</td></tr>
+          <tr><th>Steer</th><td><div class="bar center"><i id="v-steer-bar"></i></div><span id="v-steer">–</span></td></tr>
+          <tr><th>Throttle</th><td><div class="bar"><i id="v-thr-bar"></i></div><span id="v-thr">–</span></td></tr>
+          <tr><th>Status</th><td id="v-reason">–</td></tr>
+          <tr><th>Perf</th><td id="v-perf">–</td></tr>
+        </table>
+        <button class="rec" data-rec>● Record</button>
+      </div>
+      <details class="card">
+        <summary>Controller &amp; detection parameters</summary>
+        <h4>Stanley controller</h4>
+        <label class="row">k_e <input type="number" step="0.1" data-path="pipeline.stanley.k_e"></label>
+        <label class="row">k_v <input type="number" step="0.1" data-path="pipeline.stanley.k_v"></label>
+        <label class="row">Feed-forward gain <input type="number" step="0.1" data-path="pipeline.stanley.ff_gain"></label>
+        <label class="row">Wheelbase (m) <input type="number" step="0.01" data-path="pipeline.stanley.wheelbase"></label>
+        <label class="row">Max steer (deg) <input type="number" step="1" data-path="pipeline.stanley.max_steer_deg"></label>
+        <label class="row">Min lane points <input type="number" step="1" min="0" data-path="pipeline.min_lane_points"></label>
+        <h4>Distance keeping</h4>
+        <label class="row">Stop at (cm) <input type="number" step="1" data-path="pipeline.distance.stop_cm"></label>
+        <label class="row">Slow-down range (cm) <input type="number" step="1" data-path="pipeline.distance.slow_range_cm"></label>
+        <label class="row">Hold lost marker (frames) <input type="number" step="1" min="0" data-path="pipeline.distance.keep_missed_frames"></label>
+        <p class="hint">throttle × clamp((distance − stop) / range, 0, 1)</p>
+        <h4>Traffic light</h4>
+        <label class="row">ArUco marker id <input type="number" step="1" min="0" max="49" data-path="pipeline.light.marker_id"></label>
+        <label class="row">Hold state (s) <input type="number" step="0.1" min="0" data-path="pipeline.light.hold_seconds"></label>
+        <label class="check"><input type="checkbox" data-path="pipeline.light.stop_on_yellow"> Stop on yellow</label>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== TUNING ============================== -->
+<section id="tab-tune" class="tab hidden">
+  <div class="cols">
+    <div class="col-wide">
+      <div class="viewer" data-default="raw" id="sample-viewer"></div>
+      <p class="hint">Click the camera image to sample its HSV color.</p>
+      <div class="viewer small" data-default="lane"></div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <h4>Color sample</h4>
+        <div class="sample"><span id="swatch" class="swatch"></span> <span id="sample-hsv">Click the image</span></div>
+        <label class="row">Apply to <select id="sample-target"></select></label>
+        <label class="row">Tolerance H/S/V
+          <span class="triple"><input type="number" id="tol-h" value="10"><input type="number" id="tol-s" value="40"><input type="number" id="tol-v" value="50"></span>
+        </label>
+        <button id="sample-apply">Set range from sample</button>
+      </div>
+      <div class="card">
+        <h4>Camera</h4>
+        <label class="check"><input type="checkbox" data-path="camera.auto_exposure"> Auto exposure</label>
+        <label class="row">Exposure (µs) <input type="number" step="500" min="100" max="100000" data-path="camera.exposure_us"></label>
+        <label class="row">Analogue gain <input type="number" step="0.5" min="1" max="16" data-path="camera.gain"></label>
+        <label class="check"><input type="checkbox" data-path="camera.rotate180"> Rotate 180°</label>
+        <p class="hint">Shorter exposure means less motion blur but a darker image. Each preset loads the exposure its script used.</p>
+      </div>
+      <div class="card" id="hsv-card"><h4>HSV ranges <span class="hint">(OpenCV: H 0–180, S/V 0–255)</span></h4><div id="hsv-ranges"></div>
+        <label class="row">Min blob area (px) <input type="number" step="10" min="0" id="area-min"></label>
+        <label class="row">Pixel → meter <input type="number" step="0.0001" min="0" id="px-to-m"></label>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== CALIBRATE ============================== -->
+<section id="tab-calib" class="tab hidden">
+  <div class="cols">
+    <div class="col">
+      <div class="card">
+        <h4>PWM calibration <span class="hint">(duty cycle %, 150 Hz)</span></h4>
+        <div id="pwm-rows"></div>
+        <div class="btns">
+          <button id="pwm-save" class="primary">Save</button>
+          <button id="pwm-revert">Revert to saved</button>
+          <button id="pwm-defaults">Defaults</button>
+        </div>
+        <p class="hint">Changes go live to pwm_subscriber right away. <b>Save</b> writes <code id="pwm-path">~/pwm_config.json</code>, which pwm_subscriber and joy_test.py read at startup. <span id="pwm-dirty"></span></p>
+      </div>
+    </div>
+    <div class="col">
+      <div class="card">
+        <h4>Resulting duty cycles</h4>
+        <table class="kv" id="pwm-derived"></table>
+      </div>
+      <div class="card">
+        <h4>Live test <span class="hint">(hold a button; release stops)</span></h4>
+        <p class="hint">Put the car on a stand first. Testing takes manual control.</p>
+        <div class="btns">
+          <button class="hold" data-test="steer" data-v="1">Steer +1</button>
+          <button class="hold" data-test="steer" data-v="0">Center</button>
+          <button class="hold" data-test="steer" data-v="-1">Steer −1</button>
+        </div>
+        <label class="row">Test power <input type="range" min="0" max="1" step="0.05" value="0.2" id="test-power"><output>0.2</output></label>
+        <div class="btns">
+          <button class="hold" data-test="fwd">Hold forward</button>
+          <button class="hold" data-test="rev">Hold reverse</button>
+        </div>
+        <table class="kv"><tr><th>Subscriber reports</th><td id="calib-duty">–</td></tr></table>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== LOGS ============================== -->
+<section id="tab-logs" class="tab hidden">
+  <div class="card">
+    <div class="btns"><button class="rec" data-rec>● Record</button><button id="logs-refresh">Refresh</button></div>
+    <p class="hint">Records camera video (.mp4) and a per-frame CSV of commands and vision telemetry, in any mode. Folder: <code id="logs-dir"></code></p>
+    <table class="list" id="logs-table"></table>
+  </div>
+</section>
+
+<!-- ============================== SYSTEM ============================== -->
+<section id="tab-system" class="tab hidden">
+  <div class="cols">
+    <div class="col">
+      <div class="card">
+        <h4>PWM subscriber</h4>
+        <table class="kv">
+          <tr><th>Status</th><td id="sys-pwm">–</td></tr>
+          <tr><th>MQTT broker</th><td id="sys-mqtt">–</td></tr>
+        </table>
+        <div class="btns">
+          <button id="sub-start" class="primary">Start subscriber</button>
+          <button id="sub-stop">Stop subscriber</button>
+        </div>
+        <p class="hint">Keep the subscriber running whenever the chassis power switch is ON. It holds the car still when no commands arrive. Shutdown order: stop driving → switch power <b>OFF</b> → stop subscriber.</p>
+      </div>
+      <div class="card">
+        <h4>Rules</h4>
+        <ul class="hint">
+          <li>Run exactly one pwm_subscriber, and only this UI (or one script) sending commands.</li>
+          <li>Only one browser can drive at a time. Taking control from another browser takes it over.</li>
+          <li>If the browser stops sending for 0.3 s, the car stops. pwm_subscriber also idles after 0.5 s.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="col-wide">
+      <div class="card">
+        <div class="btns"><h4 style="margin:0;flex:1">Subscriber log</h4><button id="sub-refresh">Refresh</button></div>
+        <pre id="sub-log" class="log"></pre>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

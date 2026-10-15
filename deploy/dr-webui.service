@@ -1,0 +1,17 @@
+# Browser control panel (python -m webui). Install as a user service:
+#   mkdir -p ~/.config/systemd/user && cp deploy/dr-webui.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload && systemctl --user enable --now dr-webui
+#   sudo loginctl enable-linger $USER     # start at boot without logging in
+# Assumes the repo is at ~/DR-RPI and the venv at ~/venv (as in the README).
+[Unit]
+Description=DeepRacer web UI
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/DR-RPI
+ExecStart=%h/venv/bin/python -m webui --port 8080
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

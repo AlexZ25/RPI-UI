@@ -1,0 +1,17 @@
+# Optional: keep script/pwm_subscriber.py running at all times (recommended when the
+# chassis power switch is often left ON). Install like dr-webui.service.
+# Note: the web UI can only stop a subscriber it started itself; stop this one with
+#   systemctl --user stop dr-pwm-subscriber
+[Unit]
+Description=DeepRacer PWM subscriber
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/DR-RPI
+ExecStart=%h/venv/bin/python -u script/pwm_subscriber.py
+KillSignal=SIGINT
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=default.target

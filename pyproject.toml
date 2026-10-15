@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dr-rpi"
+version = "0.1.0"
+description = "Raspberry Pi driving stack"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    # add the rest
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
