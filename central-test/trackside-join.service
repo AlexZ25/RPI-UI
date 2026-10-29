@@ -1,0 +1,19 @@
+# Starts join.py at boot on a car, so it shows up in the Trackside hub by itself.
+#   scp join.py trackside-join.service pi@deepracer-1.local:
+#   ssh pi@deepracer-1.local 'sudo mv trackside-join.service /etc/systemd/system/ && sudo systemctl enable --now trackside-join'
+# Adjust User / the path below if the car's user is not "pi". Logs: journalctl -u trackside-join -f
+[Unit]
+Description=Trackside: announce this car to the hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+ExecStart=/usr/bin/python3 /home/pi/join.py
+# ExecStart=/usr/bin/python3 /home/pi/join.py --hub http://192.168.1.10:9000
+# Environment=HUB_PASSWORD=choose-one
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

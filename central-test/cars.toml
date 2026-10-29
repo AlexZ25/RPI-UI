@@ -1,0 +1,20 @@
+# Trackside car list. Edited by the hub's Cars dialog; you can also edit it by hand
+# while the hub is stopped. host = set when the car joined by itself (join.py).
+
+[[cars]]
+id = "sim1"
+name = "Sim car 1"
+url = "http://127.0.0.1:8081"
+color = "#d9463e"
+
+[[cars]]
+id = "sim2"
+name = "Sim car 2"
+url = "http://127.0.0.1:8082"
+color = "#3b7dd8"
+
+[[cars]]
+id = "sim3"
+name = "Sim car 3"
+url = "http://127.0.0.1:8083"
+color = "#2f9e5b"

@@ -1,0 +1,15 @@
+# Real cars: each Pi runs its dashboard on port 8080 at its own IP. Easiest: run join.py on
+# each car and they add themselves (see README). By hand: use the hostnames you gave the Pis
+# (name.local) or fixed IPs.
+
+[[cars]]
+id = "red"
+name = "Team Red"
+url = "http://deepracer-1.local:8080"
+color = "#d9463e"
+
+[[cars]]
+id = "blue"
+name = "Team Blue"
+url = "http://deepracer-2.local:8080"
+color = "#3b7dd8"

@@ -1,0 +1,62 @@
+# Layout of the ArUco markers placed around the grid, for localizer.py.
+#   cp grid.example.toml grid.toml      # then measure your own grid and edit
+#
+# Map coordinates, in metres, as seen from above: x to the right, y DOWN, origin at the
+# top-left corner of the grid. (Same as the hub's map.)
+#
+# Each marker stands upright (on a wall, a post or a box), printed side facing into the grid,
+# its centre at roughly the height of the car cameras. It must be vertical and must not move.
+# Place them so a car's camera sees at least TWO at a time wherever it drives: one marker alone
+# gives a rough position (off sideways by up to ~15% of the distance to it), two or more give a
+# few centimetres. Bigger markers can be seen from farther away (15 cm: about 3 m).
+#   x, y    where the centre of the marker is
+#   facing  the direction its printed side faces, in degrees on the map:
+#           0 = right (+x), 90 = down (+y), 180 = left, 270 = up
+#   size    (optional) side of the black square in metres, if not the default below
+#   height  (optional) height of the marker's centre above the floor, if not the default below
+
+width = 4.0              # size of the grid drawn on the map
+height = 3.0
+marker_size = 0.15       # side of the black square of every marker (not the white border)
+marker_height = 0.15     # height of the marker centres above the floor
+camera_forward = 0.10    # camera is this far in front of the car's centre (metres)
+
+# Top edge, facing down into the grid
+[[markers]]
+id = 0
+x = 1.0
+y = 0.0
+facing = 90
+
+[[markers]]
+id = 1
+x = 3.0
+y = 0.0
+facing = 90
+
+# Right edge, facing left
+[[markers]]
+id = 2
+x = 4.0
+y = 1.5
+facing = 180
+
+# Bottom edge, facing up
+[[markers]]
+id = 3
+x = 3.0
+y = 3.0
+facing = 270
+
+[[markers]]
+id = 4
+x = 1.0
+y = 3.0
+facing = 270
+
+# Left edge, facing right
+[[markers]]
+id = 5
+x = 0.0
+y = 1.5
+facing = 0

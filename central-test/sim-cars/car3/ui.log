@@ -1,0 +1,8 @@
+[policy] loaded StudentPolicy from student_policy.py (version 1)
+15:16:09 INFO aoe.runtime: runtime started
+15:16:09 INFO aoe.runtime: camera started (sim)
+
+  AoE dashboard for 'Cathys-MBP.lan':  http://localhost:8083
+  Ctrl+C to quit.
+
+15:16:50 INFO aoe.runtime: runtime closed

@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trackside</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #ffffff; --line: #e3e3df; --text: #1c1c1a; --muted: #75756f;
+    --run: #1f8a4c; --stop: #c8322b; --manual: #2f6fd0; --warn: #b26a00; --img: #20201e;
+    --btn: #f0f0ec; --btn-hover: #e6e6e1; --track: #e9e9e4; --track-line: #d4a514;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141413; --card: #1d1d1b; --line: #2e2e2b; --text: #ececea; --muted: #9a9a94;
+      --run: #3fbf74; --stop: #ef5a50; --manual: #6c9ff0; --warn: #e3a03a; --img: #0c0c0b;
+      --btn: #2a2a27; --btn-hover: #34342f; --track: #232321; --track-line: #b8901a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button { font: inherit; color: inherit; background: var(--btn); border: 1px solid var(--line);
+           border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button:hover:not(:disabled) { background: var(--btn-hover); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.run { color: var(--run); border-color: color-mix(in srgb, var(--run) 40%, var(--line)); }
+  button.stop { background: var(--stop); border-color: var(--stop); color: #fff; font-weight: 600; }
+  button.stop:hover:not(:disabled) { background: color-mix(in srgb, var(--stop) 85%, #000); }
+  button.link { border: 0; background: none; padding: 0 2px; color: var(--muted); text-decoration: underline; }
+  button.link:hover:not(:disabled) { background: none; color: var(--text); }
+  button.danger { color: var(--stop); }
+  input, select { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line);
+                  border-radius: 6px; padding: 6px 8px; }
+  input[type=color] { padding: 2px; width: 44px; height: 34px; }
+  input[type=checkbox] { padding: 0; }
+
+  header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px;
+           padding: 12px 16px; background: var(--bg); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  #summary { color: var(--muted); flex: 1; min-width: 140px; }
+  header .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  header button.stop { padding: 8px 18px; }
+  kbd { font: 11px ui-monospace, monospace; border: 1px solid currentColor; border-radius: 3px;
+        padding: 0 4px; opacity: .8; margin-left: 4px; }
+
+  .panel { margin: 16px 16px 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  .panel-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+  .panel-head h2 { font-size: 14px; margin: 0; font-weight: 600; }
+  .panel-head .hint { color: var(--muted); font-size: 12px; flex: 1; }
+  #map-wrap { padding: 0 14px 14px; }
+  #map { width: 100%; max-height: 360px; display: block; }
+  #map .landmark text { font-size: 0.11px; fill: var(--muted); text-anchor: middle; }
+  #map .car text { font-size: 0.16px; font-weight: 600; paint-order: stroke; stroke: var(--card); stroke-width: 0.04px; fill: var(--text); }
+  .panel.collapsed #map-wrap { display: none; }
+
+  main { padding: 16px; display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+          display: flex; flex-direction: column; }
+  .card.offline .img, .card.offline .stats { opacity: .35; }
+  .head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+  .name { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pill { font-size: 11px; font-weight: 600; letter-spacing: .04em; padding: 2px 8px; border-radius: 99px;
+          background: var(--btn); color: var(--muted); white-space: nowrap; }
+  .pill.policy { background: color-mix(in srgb, var(--run) 18%, transparent); color: var(--run); }
+  .pill.manual { background: color-mix(in srgb, var(--manual) 18%, transparent); color: var(--manual); }
+  .pill.offline { background: color-mix(in srgb, var(--stop) 15%, transparent); color: var(--stop); }
+  .sel { display: flex; align-items: center; gap: 4px; color: var(--muted); font-size: 12px; cursor: pointer; }
+
+  .img { position: relative; aspect-ratio: 16 / 9; background: var(--img); }
+  .img img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .img img:not([src]), .card.offline .img img { visibility: hidden; }
+  .img .note { position: absolute; inset: 0; display: grid; place-items: center; color: #8a8a84; font-size: 12px; }
+  .card:not(.offline) .img .note { display: none; }
+  .tabs { display: flex; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .tabs button { flex: 1; border: 0; border-radius: 0; background: transparent; padding: 5px 0;
+                 font-size: 12px; color: var(--muted); }
+  .tabs button + button { border-left: 1px solid var(--line); }
+  .tabs button.on { color: var(--text); background: var(--btn); }
+
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 10px 12px 4px; }
+  .stat .k { font-size: 11px; color: var(--muted); }
+  .stat .v { font-variant-numeric: tabular-nums; font-weight: 500; }
+  .steer { height: 4px; background: var(--line); border-radius: 2px; position: relative; margin-top: 4px; }
+  .steer i { position: absolute; top: 0; bottom: 0; background: var(--manual); border-radius: 2px; }
+  .steer::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
+
+  .msg { padding: 2px 12px 0; min-height: 20px; font-size: 12px; color: var(--muted);
+         overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .msg.err { color: var(--stop); }
+  .msg.warn { color: var(--warn); }
+  .foot { display: flex; gap: 8px; padding: 10px 12px 12px; align-items: center; }
+  .foot a { margin-left: auto; color: var(--muted); font-size: 12px; text-decoration: none; }
+  .foot a:hover { color: var(--text); }
+
+  section.upload { margin: 0 16px 24px; padding: 14px 16px; background: var(--card); border: 1px solid var(--line);
+                   border-radius: 10px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  section.upload h2 { font-size: 14px; margin: 0; font-weight: 600; }
+  section.upload .hint { color: var(--muted); font-size: 12px; flex: 1; min-width: 200px; }
+  #upload-results { width: 100%; font-size: 12px; color: var(--muted); }
+  #upload-results:empty { display: none; }
+  .ok { color: var(--run); } .bad { color: var(--stop); }
+  .empty { grid-column: 1 / -1; color: var(--muted); text-align: center; padding: 40px; }
+
+  /* Cars dialog */
+  dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text);
+           padding: 0; width: min(720px, calc(100vw - 32px)); }
+  dialog::backdrop { background: rgb(0 0 0 / .35); }
+  .dlg-head { display: flex; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .dlg-head h2 { margin: 0; font-size: 15px; flex: 1; }
+  .dlg-body { padding: 8px 16px 16px; max-height: 70vh; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; padding: 8px 6px; }
+  td { padding: 8px 6px; border-top: 1px solid var(--line); vertical-align: middle; }
+  td.url { color: var(--muted); font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; }
+  td.acts { text-align: right; white-space: nowrap; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: -1px; margin-right: 6px; }
+  form.car-form { margin-top: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; display: grid;
+                  grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+  form.car-form h3 { grid-column: 1 / -1; margin: 0; font-size: 13px; }
+  form.car-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  form.car-form .full { grid-column: 1 / -1; }
+  form.car-form .row { display: flex; gap: 8px; }
+  form.car-form .row input { flex: 1; min-width: 0; }
+  .join-hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+  .join-hint code { font-size: 12px; background: var(--btn); padding: 1px 4px; border-radius: 4px; }
+  form.car-form .buttons { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; }
+  #probe-result { font-size: 12px; }
+  #form-error { color: var(--stop); font-size: 12px; flex: 1; }
+  @media (max-width: 560px) { form.car-form { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Trackside</h1>
+  <div id="summary">connecting…</div>
+  <div class="actions">
+    <button id="open-cars">Cars</button>
+    <button class="run" id="run-all">Run all</button>
+    <button class="stop" id="stop-all" title="Stop every car">Stop all<kbd>Space</kbd></button>
+  </div>
+</header>
+
+<section class="panel" id="map-panel">
+  <div class="panel-head">
+    <h2>Map</h2>
+    <span class="hint" id="map-hint"></span>
+    <button class="link" id="map-toggle">hide</button>
+  </div>
+  <div id="map-wrap"><svg id="map" preserveAspectRatio="xMidYMid meet"></svg></div>
+</section>
+
+<main id="grid"><div class="empty">Loading cars…</div></main>
+
+<section class="upload">
+  <h2>Upload policy</h2>
+  <input type="file" id="file" accept=".py">
+  <span class="hint" id="upload-hint"></span>
+  <span><button class="link" id="sel-all">all</button>/<button class="link" id="sel-none">none</button></span>
+  <button id="upload" disabled>Upload &amp; reload</button>
+  <div id="upload-results"></div>
+</section>
+
+<dialog id="cars-dlg">
+  <div class="dlg-head"><h2>Cars</h2><button class="link" id="close-cars">close</button></div>
+  <div class="dlg-body">
+    <table>
+      <thead><tr><th>Name</th><th>Address</th><th>Joined</th><th>Status</th><th></th></tr></thead>
+      <tbody id="cars-rows"></tbody>
+    </table>
+    <p class="join-hint" id="join-hint"></p>
+    <form class="car-form" id="car-form" autocomplete="off">
+      <h3 id="form-title">Add a car</h3>
+      <label class="full">Address (the car's dashboard)
+        <span class="row">
+          <input name="url" placeholder="deepracer-1.local:8080  or  192.168.1.21" required>
+          <button type="button" id="probe">Check</button>
+        </span>
+        <span id="probe-result"></span>
+      </label>
+      <label>Name<input name="name" placeholder="Team Red"></label>
+      <label>Color<input name="color" type="color" value="#3b7dd8"></label>
+      <div class="buttons">
+        <span id="form-error"></span>
+        <button type="button" class="link" id="form-cancel" hidden>cancel edit</button>
+        <button type="submit" id="form-submit">Add car</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<template id="card-tpl">
+  <div class="card">
+    <div class="head">
+      <span class="dot"></span><span class="name"></span>
+      <span class="pill"></span>
+      <label class="sel"><input type="checkbox"> Select</label>
+    </div>
+    <div class="img"><img alt=""><div class="note">no connection</div></div>
+    <div class="tabs">
+      <button data-v="policy">Policy</button><button data-v="overlay">Overlay</button>
+      <button data-v="camera">Camera</button><button data-v="mask">Mask</button>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="k">Steering</div><div class="v" data-f="steer"></div><div class="steer"><i></i></div></div>
+      <div class="stat"><div class="k">Throttle</div><div class="v" data-f="thr"></div></div>
+      <div class="stat"><div class="k">Steps/s</div><div class="v" data-f="sps"></div></div>
+      <div class="stat"><div class="k" data-f="extra-k">Run time</div><div class="v" data-f="extra"></div></div>
+    </div>
+    <div class="msg"></div>
+    <div class="foot">
+      <button class="run" data-a="run">Run</button>
+      <button class="stop" data-a="stop">Stop</button>
+      <a target="_blank" rel="noopener">Dashboard ↗</a>
+    </div>
+  </div>
+</template>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const SVG = "http://www.w3.org/2000/svg";
+const cards = new Map();            // id -> {el, view, car, busy}
+const fmt = (x, d = 2) => (x == null || isNaN(x)) ? "–" : Number(x).toFixed(d);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function load(key, dflt) { try { return localStorage.getItem(key) ?? dflt; } catch { return dflt; } }
+function save(key, v) { try { localStorage.setItem(key, v); } catch {} }
+
+async function api(method, url, body) {
+  const r = await fetch(url, { method, headers: { "Content-Type": "application/json" },
+                               body: body === undefined ? undefined : JSON.stringify(body) });
+  let data = {};
+  try { data = await r.json(); } catch {}
+  if (!r.ok && !data.message) data.message = data.error || `HTTP ${r.status}`;
+  data.httpOk = r.ok;
+  return data;
+}
+const post = (url, body) => api("POST", url, body || {});
+
+// ------------------------------------------------------------------ cards
+function makeCard(car) {
+  const el = $("#card-tpl").content.firstElementChild.cloneNode(true);
+  const c = { el, car, view: load(`view:${car.id}`, "policy"), busy: false, imgUrl: null, alive: true };
+  el.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
+    c.view = b.dataset.v; save(`view:${car.id}`, c.view); setTabs(c);
+  });
+  el.querySelectorAll("[data-a]").forEach(b => b.onclick = () => act(c, b.dataset.a));
+  $(".sel input", el).onchange = updateUploadState;
+  setTabs(c);
+  imageLoop(c);
+  return c;
+}
+
+function setTabs(c) {
+  c.el.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.v === c.view));
+}
+
+async function act(c, what) {
+  c.busy = true; update(c);
+  $(".msg", c.el).textContent = what === "run" ? "starting…" : "stopping…";
+  const r = await post(`/api/cars/${encodeURIComponent(c.car.id)}/${what}`);
+  c.busy = false;
+  c.car.message = r.message || r.error || "";
+  update(c);
+}
+
+// fetch the next image only after the previous one arrived, so slow links self-throttle
+async function imageLoop(c) {
+  const img = $(".img img", c.el);
+  while (c.alive) {
+    const t0 = performance.now();
+    if (c.car.online && !document.hidden) {
+      try {
+        const r = await fetch(`/car/${encodeURIComponent(c.car.id)}/frame/${c.view}.jpg?t=${Date.now()}`);
+        if (r.ok) {
+          const url = URL.createObjectURL(await r.blob());
+          img.src = url;
+          if (c.imgUrl) URL.revokeObjectURL(c.imgUrl);
+          c.imgUrl = url;
+        }
+      } catch {}
+    }
+    const wait = c.car.online ? 200 : 1000;
+    await new Promise(res => setTimeout(res, Math.max(30, wait - (performance.now() - t0))));
+  }
+}
+
+// the single most useful line about a car right now: [text, class]
+function carMessage(car) {
+  const s = car.status;
+  if (!car.online) return [car.error || "offline", "err"];
+  if (s.policy_error) return ["policy error: " + s.policy_error.trim().split("\n").pop(), "err"];
+  if (s.perception_error) return ["camera: " + s.perception_error, "err"];
+  if (car.message && /fail/.test(car.message)) return [car.message, "err"];
+  const link = s.link || {};
+  if (link.kind === "mqtt" && link.ok === false) return [link.detail, "err"];
+  if (link.kind === "mqtt" && !link.pwm_alive) return ["PWM not started: start it on the car's dashboard", "warn"];
+  if (s.mode === "stop" && s.stop_reason && !/dashboard|hub/i.test(s.stop_reason)) return [s.stop_reason, "warn"];
+  if (s.mode === "policy" && s.debug?.state) return ["policy: " + s.debug.state, ""];
+  if (!s.camera_running) return ["camera off (Run starts it)", ""];
+  if (link.kind === "dry_run") return ["dry run: commands are not sent", "warn"];
+  return [car.message || (s.simulated ? "simulator" : "ready"), ""];
+}
+
+function update(c) {
+  const { car, el } = c, s = car.status;
+  el.classList.toggle("offline", !car.online);
+  $(".name", el).textContent = car.name;
+  $(".foot a", el).href = car.url;
+  const mode = car.online ? (s.mode || "stop") : "offline";
+  const pill = $(".pill", el);
+  pill.className = "pill " + mode;
+  pill.textContent = { policy: "RUNNING", stop: "STOPPED", manual: "MANUAL", offline: "OFFLINE" }[mode] || mode.toUpperCase();
+  $(".dot", el).style.background = car.color || "var(--muted)";
+
+  const steer = s?.steering, thr = s?.throttle;
+  $('[data-f="steer"]', el).textContent = car.online ? fmt(steer) : "–";
+  $('[data-f="thr"]', el).textContent = car.online ? fmt(thr) : "–";
+  $('[data-f="sps"]', el).textContent = car.online ? fmt(s.steps_per_s, 1) : "–";
+  const bar = $(".steer i", el), v = Math.max(-1, Math.min(1, Number(steer) || 0));
+  bar.style.left = (50 + Math.min(0, v) * 50) + "%"; bar.style.width = Math.abs(v) * 50 + "%";
+  if (s?.sim && s.mode === "policy") {
+    $('[data-f="extra-k"]', el).textContent = "Distance";
+    $('[data-f="extra"]', el).textContent = fmt(s.sim.distance_m, 1) + " m";
+  } else {
+    $('[data-f="extra-k"]', el).textContent = "Run time";
+    $('[data-f="extra"]', el).textContent = s?.run_time != null ? fmt(s.run_time, 1) + " s" : "–";
+  }
+
+  if (!c.busy) {
+    const [text, cls] = carMessage(car), msg = $(".msg", el);
+    msg.textContent = text; msg.className = "msg " + cls; msg.title = text;
+  }
+  $('[data-a="run"]', el).disabled = c.busy || !car.online || s.mode === "policy" || !s.policy_loaded;
+  $('[data-a="stop"]', el).disabled = c.busy;          // stop is always allowed
+}
+
+function updateSummary() {
+  const all = [...cards.values()];
+  const online = all.filter(c => c.car.online), running = online.filter(c => c.car.status.mode === "policy");
+  $("#summary").textContent = all.length
+    ? `${online.length}/${all.length} online · ${running.length} running` : "no cars yet";
+  $("#run-all").disabled = online.length === 0 || online.every(c => c.car.status.mode === "policy");
+}
+
+async function poll() {
+  try {
+    const { cars } = await (await fetch("/api/cars")).json();
+    const grid = $("#grid"), ids = new Set(cars.map(c => c.id));
+    for (const [id, c] of cards) if (!ids.has(id)) { c.alive = false; c.el.remove(); cards.delete(id); }
+    for (const car of cars) {
+      let c = cards.get(car.id);
+      if (!c) { c = makeCard(car); cards.set(car.id, c); }
+      c.car = car;
+      grid.appendChild(c.el);                 // keeps the order of the car list
+      update(c);
+    }
+    const empty = $(".empty", grid);
+    if (cars.length) empty?.remove();
+    else if (!empty) grid.innerHTML = '<div class="empty">No cars yet. Press <b>Cars</b> to add one.</div>';
+    else empty.innerHTML = 'No cars yet. Press <b>Cars</b> to add one.';
+    updateSummary();
+    if ($("#cars-dlg").open) renderCarRows();
+  } catch {
+    $("#summary").textContent = "hub unreachable";
+  }
+  setTimeout(poll, 300);
+}
+
+async function all(what) {
+  const btn = what === "run" ? $("#run-all") : $("#stop-all");
+  btn.disabled = true;
+  await post(`/api/all/${what}`);
+  btn.disabled = false;
+}
+$("#run-all").onclick = () => all("run");
+$("#stop-all").onclick = () => all("stop");
+document.addEventListener("keydown", e => {
+  if (e.code !== "Space" || e.repeat || /INPUT|TEXTAREA|SELECT|BUTTON/.test(e.target.tagName) || $("#cars-dlg").open) return;
+  e.preventDefault();
+  all("stop");
+});
+
+// ------------------------------------------------------------------ map
+const mapPanel = $("#map-panel");
+function setMapCollapsed(on) {
+  mapPanel.classList.toggle("collapsed", on);
+  $("#map-toggle").textContent = on ? "show" : "hide";
+  save("map-collapsed", on ? "1" : "");
+}
+$("#map-toggle").onclick = () => setMapCollapsed(!mapPanel.classList.contains("collapsed"));
+setMapCollapsed(!!load("map-collapsed", ""));
+
+let mapKey = "";
+function el(tag, attrs, parent) {
+  const n = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+
+function drawTrack(svg, m) {
+  const { width: W, height: H } = m.track;
+  svg.innerHTML = "";
+  svg.setAttribute("viewBox", `-0.3 -0.3 ${W + 0.6} ${H + 0.6}`);
+  el("rect", { x: 0, y: 0, width: W, height: H, rx: 0.08, fill: "var(--track)" }, svg);
+  if (m.oval) {
+    const { straight: s, radius: r } = m.oval, cx = W / 2, cy = H / 2, h = s / 2;
+    el("path", { d: `M ${cx - h} ${cy - r} H ${cx + h} A ${r} ${r} 0 0 1 ${cx + h} ${cy + r} H ${cx - h} A ${r} ${r} 0 0 1 ${cx - h} ${cy - r} Z`,
+                 fill: "none", stroke: "var(--track-line)", "stroke-width": 0.035 }, svg);
+  } else {                                              // plain 1 m grid
+    for (let x = 1; x < W; x++) el("line", { x1: x, y1: 0, x2: x, y2: H, stroke: "var(--line)", "stroke-width": 0.01 }, svg);
+    for (let y = 1; y < H; y++) el("line", { x1: 0, y1: y, x2: W, y2: y, stroke: "var(--line)", "stroke-width": 0.01 }, svg);
+  }
+  for (const mk of m.landmarks || []) {                // ArUco markers around the grid: square + tick toward its face
+    const a = mk.facing * Math.PI / 180, g = el("g", { class: "landmark", transform: `translate(${mk.x} ${mk.y})` }, svg);
+    el("line", { x1: 0, y1: 0, x2: 0.14 * Math.cos(a), y2: 0.14 * Math.sin(a), stroke: "var(--muted)", "stroke-width": 0.02 }, g);
+    el("rect", { x: -0.05, y: -0.05, width: 0.1, height: 0.1, fill: "var(--text)", transform: `rotate(${mk.facing})` }, g);
+    el("text", { x: -0.17 * Math.cos(a), y: -0.17 * Math.sin(a) + 0.04 }, g).textContent = mk.id;   // label behind it
+  }
+  el("g", { id: "map-cars" }, svg);
+}
+
+function drawMap(m) {
+  const svg = $("#map"), hint = $("#map-hint");
+  if (!m.source || !m.track) {
+    hint.textContent = "No positions yet. Real cars: run localizer.py with the grid's marker layout (see README).";
+    if (mapKey !== "none") { drawTrack(svg, { track: m.track || { width: 4, height: 2 } }); mapKey = "none"; }
+    return;
+  }
+  hint.textContent = m.source === "aruco"
+    ? `ArUco grid · ${m.track.width} × ${m.track.height} m · ${m.cars.length} of ${m.total} car${m.total === 1 ? "" : "s"} located`
+    : "Simulated cars, placed on an oval by distance driven (each has its own simulated track)";
+  const key = `${m.source}|${m.track.width}|${m.track.height}|${JSON.stringify(m.landmarks || [])}`;
+  if (key !== mapKey) { drawTrack(svg, m); mapKey = key; }
+  const g = $("#map-cars", svg);
+  g.innerHTML = "";
+  m.cars.forEach((car, i) => {
+    const deg = car.heading * 180 / Math.PI;
+    const grp = el("g", { class: "car", transform: `translate(${car.x} ${car.y})`, opacity: car.age > 1 ? 0.4 : 1 }, g);
+    el("path", { d: "M 0.17 0 L -0.1 0.1 L -0.05 0 L -0.1 -0.1 Z", fill: car.color, stroke: "var(--card)",
+                 "stroke-width": 0.02, transform: `rotate(${deg})` }, grp);
+    const t = el("text", { x: 0.12, y: i % 2 ? 0.26 : -0.13 }, grp);   // alternate above/below so close cars stay readable
+    t.textContent = car.name;
+  });
+}
+
+async function pollMap() {
+  try {
+    if (!mapPanel.classList.contains("collapsed") && !document.hidden) drawMap(await (await fetch("/api/map")).json());
+  } catch {}
+  setTimeout(pollMap, 200);
+}
+
+// ------------------------------------------------------------------ cars dialog
+const dlg = $("#cars-dlg"), form = $("#car-form");
+let editing = null;
+
+$("#open-cars").onclick = () => { renderCarRows(); resetForm(); showJoinHint(); dlg.showModal(); };
+
+async function showJoinHint() {
+  const out = $("#join-hint");
+  try {
+    const info = await (await fetch("/api/info")).json();
+    const hub = info.addresses.length ? `http://${info.addresses[0]}:${info.port}` : `http://<this computer>:${info.port}`;
+    out.innerHTML = `Cars can join by themselves: on each car run <code>python3 join.py</code>` +
+      (info.beacon ? ` (it finds this hub on the network; or <code>--hub ${esc(hub)}</code>)` : ` <code>--hub ${esc(hub)}</code>`) +
+      `. A car that changes IP keeps its entry.`;
+  } catch { out.textContent = ""; }
+}
+$("#close-cars").onclick = () => dlg.close();
+
+function renderCarRows() {
+  const rows = [...cards.values()].map(({ car }) => {
+    const st = car.online ? (car.status.mode === "policy" ? "running" : "online") : "offline";
+    return `<tr><td><span class="swatch" style="background:${esc(car.color)}"></span>${esc(car.name)}</td>
+      <td class="url">${esc(car.url)}</td><td>${car.host ? "by itself" : "by hand"}</td>
+      <td class="${st === "offline" ? "bad" : st === "running" ? "ok" : ""}">${st}</td>
+      <td class="acts"><button class="link" data-edit="${esc(car.id)}">edit</button>
+        <button class="link danger" data-remove="${esc(car.id)}">remove</button></td></tr>`;
+  });
+  $("#cars-rows").innerHTML = rows.join("") ||
+    '<tr><td colspan="5" style="color:var(--muted)">No cars yet. Add the first one below.</td></tr>';
+  if (editing && !cards.has(editing)) resetForm();
+}
+
+$("#cars-rows").onclick = async e => {
+  const editId = e.target.dataset.edit, removeId = e.target.dataset.remove;
+  if (editId) {
+    const { car } = cards.get(editId);
+    editing = editId;
+    form.url.value = car.url; form.name.value = car.name; form.color.value = car.color || "#3b7dd8";
+    $("#form-title").textContent = `Edit ${car.name}`;
+    $("#form-submit").textContent = "Save";
+    $("#form-cancel").hidden = false;
+    $("#form-error").textContent = ""; $("#probe-result").textContent = "";
+    form.url.focus();
+  } else if (removeId) {
+    const { car } = cards.get(removeId);
+    const running = car.online && car.status.mode === "policy";
+    const q = running ? `${car.name} is running. Stop it and remove it from the hub?`
+                      : `Remove ${car.name} from the hub? The car itself is not changed.`;
+    if (!confirm(q)) return;
+    if (running) await post(`/api/cars/${encodeURIComponent(removeId)}/stop`);
+    const r = await api("DELETE", `/api/cars/${encodeURIComponent(removeId)}`);
+    if (!r.httpOk) alert(r.message);
+    if (editing === removeId) resetForm();
+  }
+};
+
+function resetForm() {
+  editing = null;
+  form.reset();
+  const used = new Set([...cards.values()].map(c => c.car.color));
+  const palette = ["#d9463e", "#3b7dd8", "#2f9e5b", "#e0a21b", "#8e5bd0", "#e0672b", "#1fa3a3", "#c94c8e"];
+  form.color.value = palette.find(p => !used.has(p)) || palette[0];
+  $("#form-title").textContent = "Add a car";
+  $("#form-submit").textContent = "Add car";
+  $("#form-cancel").hidden = true;
+  $("#form-error").textContent = ""; $("#probe-result").textContent = "";
+}
+$("#form-cancel").onclick = resetForm;
+
+$("#probe").onclick = async () => {
+  const out = $("#probe-result");
+  if (!form.url.value.trim()) { out.textContent = ""; return; }
+  out.className = ""; out.textContent = "checking…";
+  const r = await post("/api/probe", { url: form.url.value.trim() });
+  if (r.ok) {
+    out.className = "ok";
+    out.textContent = `✓ found ${r.car || "a car"}${r.simulated ? " (simulator)" : ""} at ${r.url}`;
+    if (!form.name.value.trim() && r.car) form.name.value = r.car;
+  } else {
+    out.className = "bad";
+    out.textContent = `✗ ${r.error} (you can still add it; it will show as offline)`;
+  }
+};
+form.url.addEventListener("change", () => $("#probe").click());
+
+form.onsubmit = async e => {
+  e.preventDefault();
+  const body = { url: form.url.value.trim(), name: form.name.value.trim(), color: form.color.value };
+  const r = editing ? await api("PUT", `/api/cars/${encodeURIComponent(editing)}`, body)
+                    : await post("/api/cars", body);
+  if (!r.httpOk) { $("#form-error").textContent = r.message; return; }
+  resetForm();
+};
+
+// ------------------------------------------------------------------ policy upload
+const UPLOAD_HINT = "Pick a .py file, tick cars with “Select”, then upload. Each car saves it and reloads.";
+function selected() { return [...cards.values()].filter(c => $(".sel input", c.el).checked); }
+function updateUploadState() {
+  const f = $("#file").files[0], n = selected().length;
+  $("#upload").disabled = !f || !n;
+  $("#upload-hint").textContent = f
+    ? `${f.name} → ${n ? n + " selected car" + (n > 1 ? "s" : "") : "no cars selected yet"}` : UPLOAD_HINT;
+}
+$("#file").onchange = updateUploadState;
+$("#sel-all").onclick = () => { cards.forEach(c => $(".sel input", c.el).checked = true); updateUploadState(); };
+$("#sel-none").onclick = () => { cards.forEach(c => $(".sel input", c.el).checked = false); updateUploadState(); };
+$("#upload").onclick = async () => {
+  const f = $("#file").files[0], ids = selected().map(c => c.car.id);
+  const running = selected().filter(c => c.car.status?.mode === "policy").map(c => c.car.name);
+  if (running.length && !confirm(`${running.join(", ")} ${running.length > 1 ? "are" : "is"} running. ` +
+                                 "The file will be saved, but a car only reloads it after it is stopped. Upload anyway?")) return;
+  $("#upload").disabled = true;
+  const out = $("#upload-results");
+  out.textContent = "uploading…";
+  const r = await post("/api/policy", { text: await f.text(), cars: ids });
+  out.innerHTML = "";
+  if (!r.results) { out.innerHTML = `<span class="bad">${esc(r.error || r.message)}</span>`; }
+  else for (const [id, res] of Object.entries(r.results)) {
+    const line = document.createElement("div");
+    line.className = res.ok ? "ok" : "bad";
+    line.textContent = `${cards.get(id)?.car.name || id}: ${res.message}`;
+    out.appendChild(line);
+  }
+  updateUploadState();
+};
+updateUploadState();
+
+poll();
+pollMap();
+</script>
+</body>
+</html>
